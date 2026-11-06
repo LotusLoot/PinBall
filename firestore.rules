@@ -1,0 +1,70 @@
+rules_version = '2';
+// 튕겨라, 용사: Firestore 보안 규칙
+// - 로그인(익명 포함)한 사람만 읽고 쓸 수 있다
+// - 자기 기록만 쓸 수 있고, 순위 기록은 더 높은 점수로만 바꿀 수 있다
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isMe(uid) { return signedIn() && request.auth.uid == uid; }
+    function d() { return request.resource.data; }
+    function okName(n) { return n is string && n.size() >= 1 && n.size() <= 12; }
+    function okNum(v) { return v is number && v >= 0 && v < 100000000; }
+    function okRecord() {
+      return d().keys().hasOnly(['name', 'char', 'score', 'act', 'floor', 'win', 'kills', 'maxHit', 'streak', 'at'])
+        && (!('streak' in d()) || okNum(d().streak))
+        && okName(d().name) && d().char is string && okNum(d().score) && okNum(d().act) && okNum(d().floor)
+        && d().win is bool && okNum(d().kills) && okNum(d().maxHit) && d().at is number;
+    }
+
+    // 명예의 전당
+    match /players/{uid} {
+      allow read: if signedIn();
+      allow write: if isMe(uid)
+        && d().keys().hasOnly(['name', 'bestHit', 'bestKills', 'bestAsc', 'bestScore', 'wins', 'runs', 'streak', 'lastDaily', 'at'])
+        && (!('streak' in d()) || okNum(d().streak)) && (!('lastDaily' in d()) || okNum(d().lastDaily))
+        && okName(d().name) && okNum(d().bestHit) && okNum(d().bestKills) && okNum(d().bestAsc)
+        && okNum(d().bestScore) && okNum(d().wins) && okNum(d().runs);
+    }
+
+    // 일일 도전 순위표: daily/20261106/scores/{uid}
+    match /daily/{day}/scores/{uid} {
+      allow read: if signedIn();
+      allow create: if isMe(uid) && okRecord();
+      allow update: if isMe(uid) && okRecord() && d().score > resource.data.score;
+    }
+
+    // 주간 시즌: weekly/{그 주 월요일}/scores/{uid}. 합계는 줄어들 수 없다
+    match /weekly/{week}/scores/{uid} {
+      function okWeek() {
+        return d().keys().hasOnly(['name', 'total', 'days', 'streak', 'at']) && okName(d().name)
+          && okNum(d().total) && d().days is map && d().days.size() <= 7 && okNum(d().streak) && d().at is number;
+      }
+      allow read: if signedIn();
+      allow create: if isMe(uid) && okWeek();
+      allow update: if isMe(uid) && okWeek() && d().total >= resource.data.total;
+    }
+
+    // 실시간 레이스: race/20261106/live/{uid}
+    match /race/{day}/live/{uid} {
+      allow read: if signedIn();
+      allow write: if isMe(uid)
+        && d().keys().hasOnly(['name', 'char', 'act', 'floor', 'hp', 'maxHp', 'score', 'done', 'win', 'streak', 'at'])
+        && okName(d().name) && okNum(d().act) && okNum(d().floor) && okNum(d().score) && d().at is number;
+    }
+
+    // 도전장: 만든 사람만 만들 수 있고 바꿀 수 없다
+    match /challenges/{cid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && d().from == request.auth.uid
+        && d().keys().hasOnly(['from', 'fromName', 'seed', 'char', 'asc', 'score', 'at'])
+        && okName(d().fromName) && d().seed is int && d().char is string && okNum(d().asc) && okNum(d().score);
+      allow update, delete: if false;
+
+      match /results/{uid} {
+        allow read: if signedIn();
+        allow create: if isMe(uid) && okRecord();
+        allow update: if isMe(uid) && okRecord() && d().score > resource.data.score;
+      }
+    }
+  }
+}
