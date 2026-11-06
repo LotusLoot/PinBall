@@ -83,6 +83,7 @@
     const bar = document.getElementById('loadbar');
     await G.IMG.load(k => { if (bar) bar.style.width = Math.round(k * 100) + '%'; });
     try { await document.fonts.load('20px Jua'); } catch (e) {}
+    if (G.IMG.src('bg/forest')) game.style.setProperty('--title-bg', `url("${G.IMG.src('bg/forest')}")`);
     document.getElementById('loading').hidden = true;
     G.UI.title();
     G.Online.init();

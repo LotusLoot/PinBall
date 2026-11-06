@@ -9,13 +9,17 @@
     'map/battle', 'map/elite', 'map/shop', 'map/rest', 'map/treasure', 'map/event',
   ];
   IMG.list = LIST;
-  IMG.load = function (onProgress) {
+  // 이미지 위치: assets/분류/id.webp 가 기본. 폴더 없이 한 곳에 올린 경우(id.webp)도 찾는다.
+  IMG.path = key => (IMG.flat ? key.split('/').pop() : IMG.base + key) + IMG.ext;
+  const probe = src => new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+  IMG.load = async function (onProgress) {
     let done = 0;
+    if (!(await probe(IMG.path('ui/logo')))) { IMG.flat = true; }
     return Promise.all(LIST.map(key => new Promise(res => {
       const im = new Image();
       im.onload = () => { IMG.cache[key] = im; done++; onProgress && onProgress(done / LIST.length); res(); };
       im.onerror = () => { done++; onProgress && onProgress(done / LIST.length); res(); };
-      im.src = IMG.base + key + IMG.ext;
+      im.src = IMG.path(key);
     })));
   };
   IMG.get = k => IMG.cache[k] || null;

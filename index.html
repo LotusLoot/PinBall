@@ -45,7 +45,7 @@ small { display: block; font-size: 0.78em; color: var(--muted); }
 .ph { display: inline-block; background: var(--panel2); border-radius: 50%; }
 
 /* 배경 */
-.bg-title { background: linear-gradient(180deg, rgba(16, 12, 32, 0.25), rgba(16, 12, 32, 0.92) 62%), url(assets/bg/forest.webp) center top / cover; }
+.bg-title { background: linear-gradient(180deg, rgba(16, 12, 32, 0.25), rgba(16, 12, 32, 0.92) 62%), var(--title-bg, none) center top / cover; }
 .bg-plain { background: radial-gradient(90% 60% at 50% 0%, #2b2156 0%, var(--plum) 55%, var(--night) 100%); }
 .bg-map { background: radial-gradient(100% 70% at 50% 100%, #24325a 0%, var(--plum) 60%, var(--night) 100%); }
 .bg-map.act1 { background: radial-gradient(100% 70% at 50% 100%, #1f3b35 0%, #17222a 60%, var(--night) 100%); }
@@ -334,19 +334,21 @@ b.gold { color: var(--gold); font-family: var(--f-display); font-weight: 400; }
 </div>
 
 <!--SCRIPTS-->
-<script src="js/data.js"></script>
-<script src="js/util.js"></script>
-<script src="js/assets.js"></script>
-<script src="js/fx.js"></script>
-<script src="js/board.js"></script>
-<script src="js/battle.js"></script>
-<script src="js/brag.js"></script>
-<script src="js/render.js"></script>
-<script src="js/run.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/firebase-config.js"></script>
-<script src="js/online.js"></script>
-<script src="js/main.js"></script>
+<script>
+// 스크립트 불러오기: js 폴더가 있으면 거기서, 없으면 같은 폴더에서 읽는다 (GitHub에 폴더 없이 올려도 동작)
+(function () {
+  var list = ['data.js', 'util.js', 'assets.js', 'fx.js', 'board.js', 'battle.js', 'brag.js', 'render.js', 'run.js', 'ui.js', 'firebase-config.js', 'online.js', 'main.js'];
+  var i = 0, dir = null;
+  function add(src, ok, bad) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = bad; document.body.appendChild(s); }
+  function next() {
+    if (i >= list.length) return;
+    var n = list[i++];
+    if (dir !== null) return add(dir + n, next, next);
+    add('js/' + n, function () { dir = 'js/'; next(); }, function () { dir = ''; add(n, next, next); });
+  }
+  next();
+})();
+</script>
 <!--/SCRIPTS-->
 </body>
 </html>
