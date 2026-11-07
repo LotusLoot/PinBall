@@ -19,6 +19,7 @@
   const CROWN = '<svg class="ic crown" viewBox="0 0 24 18" role="img" aria-label="지난주 1위"><path d="M2 16h20l-2-11-5 5-3-8-3 8-5-5z" fill="#ffc94a" stroke="#8a5a00" stroke-width="1.5" stroke-linejoin="round"/></svg>';
   const FLAME = '<svg class="ic flame" viewBox="0 0 16 20" aria-hidden="true"><path d="M8 1c1 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-4 3-6 0 2 1 3 2 3 0-3 0-5 1-8z" fill="#ff8a3d"/></svg>';
   O.CROWN = CROWN;
+  const GICON = '<svg class="gico" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C.9 16.6 0 20.2 0 24s.9 7.4 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
   O.badges = (uid, streak) => (O.champ && O.champ.uid === uid ? CROWN : '') + (streak >= 2 ? `<span class="streak" title="${streak}일 연속 일일 도전">${FLAME}${streak}</span>` : '');
 
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); }); }
@@ -38,8 +39,9 @@
       O.auth = firebase.auth(); O.db = firebase.firestore();
       const emu = window.FIREBASE_EMULATOR;
       if (emu) { O.db.useEmulator(emu.host, emu.firestore); O.auth.useEmulator(`http://${emu.host}:${emu.auth}`); }
-      const cred = O.auth.currentUser ? { user: O.auth.currentUser } : await O.auth.signInAnonymously();
-      O.uid = cred.user.uid; O.state = 'on';
+      // 저장된 로그인(구글 포함)이 복원될 때까지 기다린 뒤, 없으면 익명으로 시작
+      const saved = await new Promise(r => { const un = O.auth.onAuthStateChanged(u => { un(); r(u); }); });
+      O.setUser(saved || (await O.auth.signInAnonymously()).user); O.state = 'on';
       O.afterReady();
     } catch (e) {
       O.state = 'error'; O.err = e && e.message; console.warn('online', e);
@@ -57,21 +59,66 @@
     if ($('.title')) G.UI.title();
   };
 
+  O.setUser = u => { O.uid = u.uid; O.gmail = u.isAnonymous ? '' : (u.email || 'Google'); };
+  O.linked = () => !!O.gmail;
+
+  // ---------- 구글 계정 연결 ----------
+  // 익명 계정에 구글을 붙이면 uid가 그대로라 기록이 이어진다.
+  // 그 구글 계정을 다른 기기에서 이미 썼다면, 그쪽 기록으로 바꿔 탄다.
+  const INAPP = /KAKAOTALK|NAVER\(|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp/i;
+  O.linkGoogle = async function (after) {
+    if (!O.on()) return G.UI.toast('서버에 연결된 뒤 다시 눌러 주세요');
+    if (INAPP.test(navigator.userAgent)) {
+      return G.UI.modal(`<h3>이 앱 안에서는 구글 로그인이 안 돼요</h3><p class="mt">카카오톡 같은 앱 안의 브라우저는 구글이 로그인을 막아요. 오른쪽 위 메뉴에서 <b>다른 브라우저로 열기</b>(크롬·사파리)를 누른 뒤 다시 해 주세요.</p><div class="btnrow"><button class="btn primary" data-act="x">알겠어요</button></div>`, { x: G.UI.closeModal });
+    }
+    const p = new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' });
+    const before = O.uid;
+    try {
+      let cred;
+      try { cred = await O.auth.currentUser.linkWithPopup(p); }
+      catch (e) {
+        if ((e.code === 'auth/credential-already-in-use' || e.code === 'auth/email-already-in-use') && e.credential) cred = await O.auth.signInWithCredential(e.credential);
+        else throw e;
+      }
+      O.setUser(cred.user);
+      if (O.uid !== before) {
+        const d = await O.db.collection('players').doc(O.uid).get();
+        if (d.exists && d.data().name) { G.meta.nick = d.data().name; G.Meta.save(); }
+        else if (O.name()) await O.saveName(O.name());
+        O.streak = 0; await O.loadMe();
+        G.UI.toast(d.exists ? `${O.name()}님의 기록을 불러왔어요` : '구글 계정으로 로그인했어요');
+      } else G.UI.toast('구글 계정을 연결했어요. 이제 폰·PC 어디서든 같은 기록이에요');
+      after && after();
+    } catch (e) {
+      const c = e && e.code;
+      if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request' || c === 'auth/user-cancelled') return;
+      console.warn('google', e);
+      G.UI.toast(c === 'auth/popup-blocked' ? '팝업이 막혔어요. 브라우저에서 팝업을 허용해 주세요'
+        : c === 'auth/unauthorized-domain' ? 'Firebase 승인된 도메인에 이 주소가 없어요'
+        : c === 'auth/operation-not-allowed' ? 'Firebase에서 Google 로그인이 꺼져 있어요'
+        : c === 'auth/network-request-failed' ? '인터넷 연결을 확인해 주세요'
+        : '구글 로그인을 하지 못했어요 (' + (c || '알 수 없음') + ')');
+    }
+  };
+  O.saveName = async function (v) {
+    const ref = O.db.collection('players').doc(O.uid), cur = await ref.get();
+    await ref.set(Object.assign(O.playerBase(), cur.exists ? cur.data() : {}, { name: v, at: now() })); // 기존 기록은 그대로 두고 이름만 바꾼다
+  };
+
   // ---------- 닉네임 ----------
   O.askName = function (next) {
     G.UI.modal(`<h3>친구들에게 보일 이름</h3><p class="mt">순위표와 레이스에 이 이름이 나옵니다. 1~12글자.</p>
       <input id="nick" class="field" maxlength="12" value="${esc(O.name())}" autocomplete="off" placeholder="예: 민수">
       <p id="nickErr" class="warn" hidden></p>
-      <div class="btnrow"><button class="btn" data-act="no">취소</button><button class="btn primary" data-act="ok">저장</button></div>`, {
+      <div class="btnrow"><button class="btn" data-act="no">취소</button><button class="btn primary" data-act="ok">저장</button></div>
+      ${O.linked() ? '' : `<button class="gbtn" data-act="google">${GICON}<span>${O.name() ? '구글 계정 연결하기' : '다른 기기에서 하던 기록 불러오기'}<small>구글로 로그인하면 폰·PC 어디서든 같은 기록</small></span></button>`}`, {
       no: G.UI.closeModal,
+      google: () => { G.UI.closeModal(); O.linkGoogle(() => (O.name() ? next && next() : O.askName(next))); },
       ok: async () => {
         const v = $('#nick').value.trim().replace(/\s+/g, ' ');
         if (!v || v.length > 12) { const e = $('#nickErr'); e.textContent = '1~12글자로 적어 주세요.'; e.hidden = false; return; }
         G.meta.nick = v; G.Meta.save();
-        try {
-          const ref = O.db.collection('players').doc(O.uid), cur = await ref.get();
-          await ref.set(Object.assign(O.playerBase(), cur.exists ? cur.data() : {}, { name: v, at: now() })); // 기존 기록은 그대로 두고 이름만 바꾼다
-        } catch (e) { console.warn(e); }
+        try { await O.saveName(v); } catch (e) { console.warn(e); }
         G.UI.closeModal(); next && next();
       },
     });
@@ -273,7 +320,9 @@
     O.loadChamp();
     G.UI.show(`<div class="page"><div class="top"><button class="btn small ghost" data-act="back">← 뒤로</button><h2>친구와 겨루기</h2><button class="btn small ghost" data-act="nick">${esc(O.name())} ✎</button></div>
       <div class="tabs five">${tabs.map(t => `<button class="tab ${tab === t[0] ? 'on' : ''}" data-act="tab" data-t="${t[0]}">${t[1]}</button>`).join('')}</div>
-      <div id="hubBody"><p class="sub">불러오는 중…</p></div></div>`, 'bg-plain', Object.assign({
+      <div id="hubBody"><p class="sub">불러오는 중…</p></div>
+      ${O.linked() ? `<p class="gok">${GICON}구글 계정 연결됨 · 폰·PC 어디서든 같은 기록</p>` : `<button class="gbtn" data-act="google">${GICON}<span>구글 계정 연결하기<small>연결해 두면 폰·PC 어디서든 같은 기록으로 이어져요</small></span></button>`}</div>`, 'bg-plain', Object.assign({
+      google: () => O.linkGoogle(() => O.hub(tab)),
       back: () => { unsubDaily && unsubDaily(); G.UI.title(); }, tab: d => O.hub(d.t), nick: () => O.askName(() => O.hub(tab)),
       daily: () => G.UI.daily(G.Run.loadSaved()), newC: () => O.newChallenge(), openC: d => O.openChallenge(d.id),
     }, O.resultActs));

@@ -294,6 +294,13 @@ i.coin, .gold i, .goldline i { display: inline-block; width: 0.8em; height: 0.8e
 .chrow:hover { box-shadow: inset 0 0 0 2px var(--gold); }
 
 /* 시즌 */
+.gbtn { display: flex; align-items: center; gap: calc(var(--u) * 12); width: 100%; margin-top: calc(var(--u) * 16); padding: calc(var(--u) * 12) calc(var(--u) * 16); border-radius: calc(var(--u) * 16); background: var(--cream); color: #1d1638; text-align: left; font-family: var(--f-display); font-size: calc(var(--u) * 19); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.15); }
+.gbtn small { display: block; font-family: var(--f-body, inherit); font-size: calc(var(--u) * 14); color: rgba(29, 22, 56, 0.65); margin-top: calc(var(--u) * 2); }
+.gbtn span { min-width: 0; }
+.gico { width: calc(var(--u) * 26); height: calc(var(--u) * 26); flex: none; }
+.gbtn .gico { background: #fff; border-radius: 50%; padding: calc(var(--u) * 4); box-sizing: content-box; }
+.gok { display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * 8); color: var(--muted); font-size: calc(var(--u) * 15); margin-top: calc(var(--u) * 16); }
+.gok .gico { width: calc(var(--u) * 18); height: calc(var(--u) * 18); }
 .tabs.five .tab { font-size: calc(var(--u) * 15); padding: calc(var(--u) * 8) calc(var(--u) * 2); }
 .ic { width: 1em; height: 1em; vertical-align: -0.12em; margin-left: 0.25em; flex: none; }
 .ic.crown { width: 1.2em; }
